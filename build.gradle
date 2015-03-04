@@ -1,0 +1,50 @@
+repositories {
+	jcenter()
+}
+
+apply plugin: 'java'
+sourceSets {
+	main { java {
+			srcDir 'src'
+	} }
+}
+
+sourceCompatibility = '1.8'
+targetCompatibility = '1.8'
+
+// make a source jar
+task sourceJar(type: Jar) {
+	from sourceSets.main.allJava
+}
+
+// publish
+apply plugin: 'maven-publish'
+
+group = 'org.blackoverlord.mslinks'
+
+publishing {
+	publications {
+		mavenJava(MavenPublication) {
+			from components.java
+
+			artifact sourceJar {
+				classifier "sources"
+			}
+		}
+	}
+
+	repositories {
+		maven {
+			if (project.version.endsWith('-SNAPSHOT')) {
+				url "${dp_maven}/libs-snapshot-local"
+			} else {
+				url "${dp_maven}/libs-release-local"
+			}
+
+			credentials {
+				username "${dp_maven_user}"
+				password "${dp_maven_pass}"
+			}
+		}
+	}
+}
