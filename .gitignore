@@ -1,4 +1,13 @@
-bin/
-build/
+
+# mac stuff
+*.DS_Store
+
+# gradle stuff
 .gradle/
-*.pdf
+build/
+
+# Eclipse stuff
+.project
+.classpath
+.settings/
+bin/

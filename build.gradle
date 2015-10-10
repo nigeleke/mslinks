@@ -17,6 +17,15 @@ task sourceJar(type: Jar) {
 	from sourceSets.main.allJava
 }
 
+// eclipse
+apply plugin: 'eclipse'
+eclipse {
+	classpath {
+		downloadSources true
+		downloadJavadoc true
+	}
+}
+
 // publish
 apply plugin: 'maven-publish'
 
