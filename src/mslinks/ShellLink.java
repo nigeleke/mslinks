@@ -1,3 +1,17 @@
+/*
+	https://github.com/BlackOverlord666/mslinks
+	
+	Copyright (c) 2015 Dmitrii Shamrikov
+
+	Licensed under the WTFPL
+	You may obtain a copy of the License at
+ 
+	http://www.wtfpl.net/about/
+ 
+	Unless required by applicable law or agreed to in writing, software
+	distributed under the License is distributed on an "AS IS" BASIS,
+	WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+*/
 package mslinks;
 
 import io.ByteReader;
@@ -46,7 +60,7 @@ public class ShellLink {
 	
 	private Path linkFileSource;
 	
-	private ShellLink() {
+	public ShellLink() {
 		header = new ShellLinkHeader();
 		header.getLinkFlags().setIsUnicode();
 	}
@@ -253,11 +267,11 @@ public class ShellLink {
 		if (header.getLinkFlags().hasLinkTargetIDList() && idlist != null && idlist.isCorrect()) {
 			String path = "";
 			for (ItemID i : idlist) {
-				if (i.getType() == ItemID.TYPE_DRIVE)
+				if (i.getType() == ItemID.TYPE_DRIVE || i.getType() == ItemID.TYPE_DRIVE_OLD)
 					path = i.getName();
-				else if (i.getType() == ItemID.TYPE_DIRECTORY) 
+				else if (i.getType() == ItemID.TYPE_DIRECTORY || i.getType() == ItemID.TYPE_DIRECTORY_OLD)
 					path += i.getName() + File.separator;
-				else if (i.getType() == ItemID.TYPE_FILE)
+				else if (i.getType() == ItemID.TYPE_FILE || i.getType() == ItemID.TYPE_FILE_OLD)
 					path += i.getName();				
 			}
 			return path;
@@ -287,10 +301,12 @@ public class ShellLink {
 		
 		return "<unknown>";
 	}
-	
-	public static ShellLink createLink(String target) {
-		ShellLink sl = new ShellLink();
-		
+
+	/**
+	 * Set path of target file of directory. Function accepts local paths and network paths.
+	 * Environment variables are accepted but resolved here and aren't kept in link.
+	 */
+	public ShellLink setTarget(String target) {
 		target = resolveEnvVariables(target);
 		
 		Path tar = Paths.get(target).toAbsolutePath();
@@ -300,36 +316,42 @@ public class ShellLink {
 			int p1 = target.indexOf('\\', 2);
 			int p2 = target.indexOf('\\', p1+1);
 			
-			LinkInfo inf = sl.createLinkInfo();
+			LinkInfo inf = createLinkInfo();
 			inf.createCommonNetworkRelativeLink().setNetName(target.substring(0, p2));
 			inf.setCommonPathSuffix(target.substring(p2+1));
 			
 			if (Files.isDirectory(Paths.get(target)))
-				sl.header.getFileAttributesFlags().setDirecory();
+				header.getFileAttributesFlags().setDirecory();
 			
-			sl.header.getLinkFlags().setHasExpString();
-			sl.extra.put(EnvironmentVariable.signature, new EnvironmentVariable().setVariable(target));
+			header.getLinkFlags().setHasExpString();
+			extra.put(EnvironmentVariable.signature, new EnvironmentVariable().setVariable(target));
 			
 		} else try {
-			sl.header.getLinkFlags().setHasLinkTargetIDList();
-			sl.idlist = new LinkTargetIDList();			
+			header.getLinkFlags().setHasLinkTargetIDList();
+			idlist = new LinkTargetIDList();
 			String[] path = target.split("\\\\");
-			sl.idlist.add(new ItemID().setType(ItemID.TYPE_CLSID));
-			sl.idlist.add(new ItemID().setType(ItemID.TYPE_DRIVE).setName(path[0]));
+			idlist.add(new ItemID().setType(ItemID.TYPE_CLSID));
+			idlist.add(new ItemID().setType(ItemID.TYPE_DRIVE).setName(path[0]));
 			for (int i=1; i<path.length; i++)
-				sl.idlist.add(new ItemID().setType(ItemID.TYPE_DIRECTORY).setName(path[i]));
+				idlist.add(new ItemID().setType(ItemID.TYPE_DIRECTORY).setName(path[i]));
 			
-			LinkInfo inf = sl.createLinkInfo();
+			LinkInfo inf = createLinkInfo();
 			inf.createVolumeID().setDriveType(VolumeID.DRIVE_FIXED);
 			inf.setLocalBasePath(target);
 			
 			if (Files.isDirectory(tar))
-				sl.header.getFileAttributesFlags().setDirecory();
+				header.getFileAttributesFlags().setDirecory();
 			else 
-				sl.idlist.getLast().setType(ItemID.TYPE_FILE);
+				idlist.getLast().setType(ItemID.TYPE_FILE);
 
 		} catch (ShellLinkException e) {}
 		
+		return this;
+	}
+	
+	public static ShellLink createLink(String target) {
+		ShellLink sl = new ShellLink();
+		sl.setTarget( target );
 		return sl;
 	}
 	
