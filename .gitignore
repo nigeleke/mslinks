@@ -1,7 +1,21 @@
 bin/
 *.pdf
+testlink.lnk
+
+# mac stuff
+*.DS_Store
+
+# gradle stuff
+.gradle/
+build/
+
+# Eclipse stuff
+.project
+.classpath
+.settings/
+
+# IntelliJ Idea stuff
 /target/
 /.project
 /.idea
 *.iml
-testlink.lnk
