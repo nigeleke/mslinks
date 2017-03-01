@@ -36,16 +36,16 @@ package mslinks;
 
 
 public class ShellLinkException extends Exception {
-	/**
-	 * 
-	 */
-	private static final long serialVersionUID = -1568196946216387167L;
+    /**
+     *
+     */
+    private static final long serialVersionUID = -1568196946216387167L;
 
-	public ShellLinkException() {
-		super();
-	}
-	
-	public ShellLinkException(String msg) {
-		super(msg);
-	}
+    public ShellLinkException() {
+        super();
+    }
+
+    public ShellLinkException(String msg) {
+        super(msg);
+    }
 }

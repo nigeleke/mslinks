@@ -35,10 +35,10 @@ package mslinks;
  */
 
 
-import java.io.IOException;
-
 import io.ByteWriter;
 
+import java.io.IOException;
+
 public interface Serializable {
-	void serialize(ByteWriter bw) throws IOException;
+    void serialize(ByteWriter bw) throws IOException;
 }
