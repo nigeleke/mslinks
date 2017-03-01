@@ -20,14 +20,115 @@ package mslinks;
  * #L%
  */
 
+import org.junit.*;
 
-import org.junit.Test;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.LinkOption;
+import java.nio.file.Path;
+
+import static org.junit.Assert.*;
 
 public class ShellLinkTest {
 
-	@Test
-	public void dummyTest(){
-		assert true;
-	}
+    private Path folder = null;
+    private Path file = null;
+    private Path shortcut = null;
+
+    @Before
+    public void setUpPaths() throws IOException {
+        folder = Files.createTempDirectory("mslinks_test");
+        file = Files.createFile(folder.resolve("pause.bat"));
+        shortcut = folder.resolve("testlink.lnk");
+    }
+
+    @After
+    public void tidyUp() throws IOException {
+        Files.deleteIfExists(shortcut);
+        Files.deleteIfExists(file);
+        Files.deleteIfExists(folder);
+    }
+
+    @Test
+    public void mainTest() throws IOException {
+        // Test is trivial. Copied from original main() example.
+        try {
+            assertFalse(Files.exists(shortcut, LinkOption.NOFOLLOW_LINKS));
+
+            ShellLink sl = ShellLink.createLink(file.toString())
+                    .setWorkingDir("..")
+                    .setIconLocation("%SystemRoot%\\system32\\SHELL32.dll");
+            sl.getHeader().setIconIndex(128);
+            sl.getConsoleData()
+                    .setFont(mslinks.extra.ConsoleData.Font.Consolas)
+                    .setFontSize(24)
+                    .setTextColor(5);
+
+            sl.saveTo(shortcut.toString());
+
+            assertTrue(Files.exists(shortcut, LinkOption.NOFOLLOW_LINKS));
+            assertTrue(Files.exists(file));
+            assertTrue(Files.exists(shortcut));
+        } catch (IOException e) {
+            fail(e.getMessage());
+        }
+    }
+
+    @Test
+    public void pathTest() throws IOException {
+        // Test is trivial. Modified from original main() example for new Path interface.
+        try {
+            assertFalse(Files.exists(shortcut, LinkOption.NOFOLLOW_LINKS));
+
+            ShellLink sl = ShellLink.createLink(file)
+                    .setWorkingDir("..")
+                    .setIconLocation("%SystemRoot%\\system32\\SHELL32.dll");
+            sl.getHeader().setIconIndex(128);
+            sl.getConsoleData()
+                    .setFont(mslinks.extra.ConsoleData.Font.Consolas)
+                    .setFontSize(24)
+                    .setTextColor(5);
+
+            sl.saveTo(shortcut);
+
+            assertTrue(Files.exists(shortcut, LinkOption.NOFOLLOW_LINKS));
+            assertTrue(Files.exists(file));
+            assertTrue(Files.exists(shortcut));
+        } catch (IOException e) {
+            fail(e.getMessage());
+        }
+    }
+
+    @Test
+    public void createLinkTest() {
+        try {
+            assertFalse(Files.exists(shortcut, LinkOption.NOFOLLOW_LINKS));
+
+            ShellLink sl = ShellLink.createLink(file.toString(), shortcut.toString());
+
+            assertTrue(Files.exists(shortcut, LinkOption.NOFOLLOW_LINKS));
+            assertTrue(Files.exists(file));
+            assertTrue(Files.exists(shortcut));
+        } catch (IOException e) {
+            fail(e.getMessage());
+        }
+
+    }
+
+    @Test
+    public void createLinkPathTest() {
+        try {
+            assertFalse(Files.exists(shortcut, LinkOption.NOFOLLOW_LINKS));
+
+            ShellLink sl = ShellLink.createLink(file, shortcut);
+
+            assertTrue(Files.exists(shortcut, LinkOption.NOFOLLOW_LINKS));
+            assertTrue(Files.exists(file));
+            assertTrue(Files.exists(shortcut));
+        } catch (IOException e) {
+            fail(e.getMessage());
+        }
+
+    }
 
 }

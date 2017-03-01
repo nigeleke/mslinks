@@ -36,6 +36,11 @@ package mslinks;
 
 import io.ByteReader;
 import io.ByteWriter;
+import mslinks.data.CNRLink;
+import mslinks.data.ItemID;
+import mslinks.data.LinkFlags;
+import mslinks.data.VolumeID;
+import mslinks.extra.*;
 
 import java.io.File;
 import java.io.IOException;
@@ -49,345 +54,373 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.regex.Pattern;
 
-import mslinks.data.CNRLink;
-import mslinks.data.ItemID;
-import mslinks.data.LinkFlags;
-import mslinks.data.VolumeID;
-import mslinks.extra.ConsoleData;
-import mslinks.extra.ConsoleFEData;
-import mslinks.extra.EnvironmentVariable;
-import mslinks.extra.Stub;
-import mslinks.extra.Tracker;
-import mslinks.extra.VistaIDList;
-
+@SuppressWarnings("UnusedReturnValue")
 public class ShellLink {
-	private static Map<String, String> env = System.getenv();
+    private static final Map<String, String> env = System.getenv();
 
-	private static HashMap<Integer, Class> extraTypes = new HashMap<Integer, Class>() {{
-		put(ConsoleData.signature, ConsoleData.class);
-		put(ConsoleFEData.signature, ConsoleFEData.class);
-		put(Tracker.signature, Tracker.class);
-		put(VistaIDList.signature, VistaIDList.class);
-		put(EnvironmentVariable.signature, EnvironmentVariable.class);
-	}};
+    private static final HashMap<Integer, Class> extraTypes = new HashMap<Integer, Class>() {{
+        put(ConsoleData.signature, ConsoleData.class);
+        put(ConsoleFEData.signature, ConsoleFEData.class);
+        put(Tracker.signature, Tracker.class);
+        put(VistaIDList.signature, VistaIDList.class);
+        put(EnvironmentVariable.signature, EnvironmentVariable.class);
+    }};
+    private final HashMap<Integer, Serializable> extra = new HashMap<>();
+    private ShellLinkHeader header;
+    private LinkTargetIDList idlist;
+    private LinkInfo info;
+    private String name, relativePath, workingDir, cmdArgs, iconLocation;
+    private Path linkFileSource;
 
+    public ShellLink() {
+        header = new ShellLinkHeader();
+        header.getLinkFlags().setIsUnicode();
+    }
 
-	private ShellLinkHeader header;
-	private LinkTargetIDList idlist;
-	private LinkInfo info;
-	private String name, relativePath, workingDir, cmdArgs, iconLocation;
-	private HashMap<Integer, Serializable> extra = new HashMap<>();
+    public ShellLink(String file) throws IOException, ShellLinkException {
+        this(Paths.get(file));
+    }
 
-	private Path linkFileSource;
+    public ShellLink(File file) throws IOException, ShellLinkException {
+        this(file.toPath());
+    }
 
-	public ShellLink() {
-		header = new ShellLinkHeader();
-		header.getLinkFlags().setIsUnicode();
-	}
+    public ShellLink(Path file) throws IOException, ShellLinkException {
+        this(Files.newInputStream(file));
+        linkFileSource = file.toAbsolutePath();
+    }
 
-	public ShellLink(String file) throws IOException, ShellLinkException {
-		this(Paths.get(file));
-	}
+    public ShellLink(InputStream in) throws IOException, ShellLinkException {
+        this(new ByteReader(in));
+        in.close();
+    }
 
-	public ShellLink(File file) throws IOException, ShellLinkException {
-		this(file.toPath());
-	}
+    private ShellLink(ByteReader data) throws ShellLinkException, IOException {
+        header = new ShellLinkHeader(data);
+        LinkFlags lf = header.getLinkFlags();
+        if (lf.hasLinkTargetIDList())
+            idlist = new LinkTargetIDList(data);
+        if (lf.hasLinkInfo())
+            info = new LinkInfo(data);
+        if (lf.hasName())
+            name = data.readUnicodeString();
+        if (lf.hasRelativePath())
+            relativePath = data.readUnicodeString();
+        if (lf.hasWorkingDir())
+            workingDir = data.readUnicodeString();
+        if (lf.hasArguments())
+            cmdArgs = data.readUnicodeString();
+        if (lf.hasIconLocation())
+            iconLocation = data.readUnicodeString();
 
-	public ShellLink(Path file) throws IOException, ShellLinkException {
-		this(Files.newInputStream(file));
-		linkFileSource = file.toAbsolutePath();
-	}
+        while (true) {
+            int size = (int) data.read4bytes();
+            if (size < 4) break;
+            int sign = (int) data.read4bytes();
+            try {
+                Class cl = extraTypes.get(sign);
+                if (cl != null)
+                    //noinspection unchecked
+                    extra.put(sign, (Serializable) cl.getConstructor(ByteReader.class, int.class).newInstance(data, size));
+                else
+                    extra.put(sign, new Stub(data, size, sign));
+            } catch (InstantiationException | IllegalAccessException | IllegalArgumentException
+                    | InvocationTargetException | NoSuchMethodException | SecurityException e) {
+                e.printStackTrace();
+            }
+        }
+    }
 
-	public ShellLink(InputStream in) throws IOException, ShellLinkException {
-		this(new ByteReader(in));
-		in.close();
-	}
+    public static ShellLink createLink(String target) {
+        ShellLink sl = new ShellLink();
+        sl.setTarget(target);
+        return sl;
+    }
 
-	private ShellLink(ByteReader data) throws ShellLinkException, IOException {
-		header = new ShellLinkHeader(data);
-		LinkFlags lf = header.getLinkFlags();
-		if (lf.hasLinkTargetIDList())
-			idlist = new LinkTargetIDList(data);
-		if (lf.hasLinkInfo())
-			info = new LinkInfo(data);
-		if (lf.hasName())
-			name = data.readUnicodeString();
-		if (lf.hasRelativePath())
-			relativePath = data.readUnicodeString();
-		if (lf.hasWorkingDir())
-			workingDir = data.readUnicodeString();
-		if (lf.hasArguments())
-			cmdArgs = data.readUnicodeString();
-		if (lf.hasIconLocation())
-			iconLocation = data.readUnicodeString();
+    public static ShellLink createLink(Path target) {
+        ShellLink sl = new ShellLink();
+        sl.setTarget(target);
+        return sl;
+    }
 
-		while (true) {
-			int size = (int)data.read4bytes();
-			if (size < 4) break;
-			int sign = (int)data.read4bytes();
-			try {
-				Class cl = extraTypes.get(sign);
-				if (cl != null)
-					extra.put(sign, (Serializable)cl.getConstructor(ByteReader.class, int.class).newInstance(data, size));
-				else
-					extra.put(sign, new Stub(data, size, sign));
-			} catch (InstantiationException | IllegalAccessException | IllegalArgumentException
-					| InvocationTargetException | NoSuchMethodException	| SecurityException e) {
-				e.printStackTrace();
-			}
-		}
-	}
+    /**
+     * equivalent to createLink(target).saveTo(linkpath)
+     */
+    public static ShellLink createLink(String target, String linkpath) throws IOException {
+        return createLink(target).saveTo(linkpath);
+    }
 
-	private void serialize(OutputStream out) throws IOException {
-		LinkFlags lf = header.getLinkFlags();
-		ByteWriter bw = new ByteWriter(out);
-		header.serialize(bw);
-		if (lf.hasLinkTargetIDList())
-			idlist.serialize(bw);
+    public static ShellLink createLink(Path target, Path linkpath) throws IOException {
+        return createLink(target).saveTo(linkpath);
+    }
 
-		if (lf.hasLinkInfo())
-			info.serialize(bw);
-		if (lf.hasName())
-			bw.writeUnicodeString(name);
-		if (lf.hasRelativePath())
-			bw.writeUnicodeString(relativePath);
-		if (lf.hasWorkingDir())
-			bw.writeUnicodeString(workingDir);
-		if (lf.hasArguments())
-			bw.writeUnicodeString(cmdArgs);
-		if (lf.hasIconLocation())
-			bw.writeUnicodeString(iconLocation);
+    private static String resolveEnvVariables(String path) {
+        for (String i : env.keySet()) {
+            String p = i.replace("(", "\\(").replace(")", "\\)");
+            String r = env.get(i).replace("\\", "\\\\");
+            path = Pattern.compile("%" + p + "%", Pattern.CASE_INSENSITIVE).matcher(path).replaceAll(r);
+        }
+        return path;
+    }
 
-		for (Serializable i : extra.values())
-			i.serialize(bw);
+    private void serialize(OutputStream out) throws IOException {
+        LinkFlags lf = header.getLinkFlags();
+        ByteWriter bw = new ByteWriter(out);
+        header.serialize(bw);
+        if (lf.hasLinkTargetIDList())
+            idlist.serialize(bw);
 
-		bw.write4bytes(0);
-		out.close();
-	}
+        if (lf.hasLinkInfo())
+            info.serialize(bw);
+        if (lf.hasName())
+            bw.writeUnicodeString(name);
+        if (lf.hasRelativePath())
+            bw.writeUnicodeString(relativePath);
+        if (lf.hasWorkingDir())
+            bw.writeUnicodeString(workingDir);
+        if (lf.hasArguments())
+            bw.writeUnicodeString(cmdArgs);
+        if (lf.hasIconLocation())
+            bw.writeUnicodeString(iconLocation);
 
-	public ShellLinkHeader getHeader() { return header; }
+        for (Serializable i : extra.values())
+            i.serialize(bw);
 
-	public LinkInfo getLinkInfo() { return info; }
-	public LinkInfo createLinkInfo() {
-		info = new LinkInfo();
-		header.getLinkFlags().setHasLinkInfo();
-		return info;
-	}
+        bw.write4bytes(0);
+        out.close();
+    }
 
-	public String getName() { return name; }
-	public ShellLink setName(String s) {
-		if (s == null)
-			header.getLinkFlags().clearHasName();
-		else
-			header.getLinkFlags().setHasName();
-		name = s;
-		return this;
-	}
+    public ShellLinkHeader getHeader() {
+        return header;
+    }
 
-	public String getRelativePath() { return relativePath; }
-	public ShellLink setRelativePath(String s) {
-		if (s == null)
-			header.getLinkFlags().clearHasRelativePath();
-		else {
-			header.getLinkFlags().setHasRelativePath();
-			if (!s.startsWith("."))
-				s = ".\\" + s;
-		}
-		relativePath = s;
-		return this;
-	}
+    public LinkInfo getLinkInfo() {
+        return info;
+    }
 
-	public String getWorkingDir() { return workingDir; }
-	public ShellLink setWorkingDir(String s) {
-		if (s == null)
-			header.getLinkFlags().clearHasWorkingDir();
-		else {
-			header.getLinkFlags().setHasWorkingDir();
-			s = Paths.get(s).toAbsolutePath().normalize().toString();
-		}
-		workingDir = s;
-		return this;
-	}
+    public LinkInfo createLinkInfo() {
+        info = new LinkInfo();
+        header.getLinkFlags().setHasLinkInfo();
+        return info;
+    }
 
-	public String getCMDArgs() { return cmdArgs; }
-	public ShellLink setCMDArgs(String s) {
-		if (s == null)
-			header.getLinkFlags().clearHasArguments();
-		else
-			header.getLinkFlags().setHasArguments();
-		cmdArgs = s;
-		return this;
-	}
+    public String getName() {
+        return name;
+    }
 
-	public String getIconLocation() { return iconLocation; }
-	public ShellLink setIconLocation(String s) {
-		if (s == null)
-			header.getLinkFlags().clearHasIconLocation();
-		else {
-			header.getLinkFlags().setHasIconLocation();
-			String t = resolveEnvVariables(s);
-			if (!Paths.get(t).isAbsolute())
-				s = Paths.get(s).toAbsolutePath().toString();
-		}
-		iconLocation = s;
-		return this;
-	}
+    public ShellLink setName(String s) {
+        if (s == null)
+            header.getLinkFlags().clearHasName();
+        else
+            header.getLinkFlags().setHasName();
+        name = s;
+        return this;
+    }
 
-	public ConsoleData getConsoleData() {
-		ConsoleData cd = (ConsoleData)extra.get(ConsoleData.signature);
-		if (cd == null) {
-			cd = new ConsoleData();
-			extra.put(ConsoleData.signature, cd);
-		}
-		return cd;
-	}
+    public String getRelativePath() {
+        return relativePath;
+    }
 
-	public String getLanguage() {
-		ConsoleFEData cd = (ConsoleFEData)extra.get(ConsoleFEData.signature);
-		if (cd == null) {
-			cd = new ConsoleFEData();
-			extra.put(ConsoleFEData.signature, cd);
-		}
-		return cd.getLanguage();
-	}
+    public ShellLink setRelativePath(String s) {
+        if (s == null)
+            header.getLinkFlags().clearHasRelativePath();
+        else {
+            header.getLinkFlags().setHasRelativePath();
+            if (!s.startsWith("."))
+                s = ".\\" + s;
+        }
+        relativePath = s;
+        return this;
+    }
 
-	public ShellLink setLanguage(String s) {
-		ConsoleFEData cd = (ConsoleFEData)extra.get(ConsoleFEData.signature);
-		if (cd == null) {
-			cd = new ConsoleFEData();
-			extra.put(ConsoleFEData.signature, cd);
-		}
-		cd.setLanguage(s);
-		return this;
-	}
+    public String getWorkingDir() {
+        return workingDir;
+    }
 
-	public ShellLink saveTo(String path) throws IOException {
-		linkFileSource = Paths.get(path).toAbsolutePath().normalize();
-		if (Files.isDirectory(linkFileSource))
-			throw new IOException("path is directory!");
+    public ShellLink setWorkingDir(String s) {
+        if (s == null)
+            header.getLinkFlags().clearHasWorkingDir();
+        else {
+            header.getLinkFlags().setHasWorkingDir();
+            s = Paths.get(s).toAbsolutePath().normalize().toString();
+        }
+        workingDir = s;
+        return this;
+    }
 
-		if (!header.getLinkFlags().hasRelativePath()) {
-			Path target = Paths.get(resolveTarget());
-			Path origin = linkFileSource.getParent();
-			if (target.getRoot().equals(origin.getRoot()))
-				setRelativePath(origin.relativize(target).toString());
-		}
+    public String getCMDArgs() {
+        return cmdArgs;
+    }
 
-		if (!header.getLinkFlags().hasWorkingDir()) {
-			Path target = Paths.get(resolveTarget());
-			if (!Files.isDirectory(target))
-				setWorkingDir(target.getParent().toString());
-		}
+    public ShellLink setCMDArgs(String s) {
+        if (s == null)
+            header.getLinkFlags().clearHasArguments();
+        else
+            header.getLinkFlags().setHasArguments();
+        cmdArgs = s;
+        return this;
+    }
 
-		serialize(Files.newOutputStream(linkFileSource));
-		return this;
-	}
+    public String getIconLocation() {
+        return iconLocation;
+    }
 
-	public String resolveTarget() {
-		if (header.getLinkFlags().hasLinkTargetIDList() && idlist != null && idlist.isCorrect()) {
-			String path = "";
-			for (ItemID i : idlist) {
-				if (i.getType() == ItemID.TYPE_DRIVE || i.getType() == ItemID.TYPE_DRIVE_OLD)
-					path = i.getName();
-				else if (i.getType() == ItemID.TYPE_DIRECTORY || i.getType() == ItemID.TYPE_DIRECTORY_OLD)
-					path += i.getName() + File.separator;
-				else if (i.getType() == ItemID.TYPE_FILE || i.getType() == ItemID.TYPE_FILE_OLD)
-					path += i.getName();
-			}
-			return path;
-		}
+    public ShellLink setIconLocation(String s) {
+        if (s == null)
+            header.getLinkFlags().clearHasIconLocation();
+        else {
+            header.getLinkFlags().setHasIconLocation();
+            String t = resolveEnvVariables(s);
+            if (!Paths.get(t).isAbsolute())
+                s = Paths.get(s).toAbsolutePath().toString();
+        }
+        iconLocation = s;
+        return this;
+    }
 
-		if (header.getLinkFlags().hasLinkInfo() && info != null) {
-			CNRLink l = info.getCommonNetworkRelativeLink();
-			String cps = info.getCommonPathSuffix();
-			String lbp = info.getLocalBasePath();
+    public ConsoleData getConsoleData() {
+        ConsoleData cd = (ConsoleData) extra.get(ConsoleData.signature);
+        if (cd == null) {
+            cd = new ConsoleData();
+            extra.put(ConsoleData.signature, cd);
+        }
+        return cd;
+    }
 
-			if (lbp != null) {
-				String path = lbp;
-				if (cps != null && !cps.equals("")) {
-					if (path.charAt(path.length() - 1) != File.separatorChar)
-						path += File.separatorChar;
-					path += cps;
-				}
-				return path;
-			}
+    public String getLanguage() {
+        ConsoleFEData cd = (ConsoleFEData) extra.get(ConsoleFEData.signature);
+        if (cd == null) {
+            cd = new ConsoleFEData();
+            extra.put(ConsoleFEData.signature, cd);
+        }
+        return cd.getLanguage();
+    }
 
-			if (l != null && cps != null)
-				return l.getNetName() + File.separator + cps;
-		}
+    public ShellLink setLanguage(String s) {
+        ConsoleFEData cd = (ConsoleFEData) extra.get(ConsoleFEData.signature);
+        if (cd == null) {
+            cd = new ConsoleFEData();
+            extra.put(ConsoleFEData.signature, cd);
+        }
+        cd.setLanguage(s);
+        return this;
+    }
 
-		if (linkFileSource != null && header.getLinkFlags().hasRelativePath() && relativePath != null)
-			return linkFileSource.resolveSibling(relativePath).normalize().toString();
+    public ShellLink saveTo(String path) throws IOException {
+        return saveTo(Paths.get(path));
+    }
 
-		return "<unknown>";
-	}
+    public ShellLink saveTo(Path path) throws IOException {
+        linkFileSource = path.toAbsolutePath().normalize();
+        if (Files.isDirectory(linkFileSource))
+            throw new IOException("path is directory!");
 
-	/**
-	 * Set path of target file of directory. Function accepts local paths and network paths.
-	 * Environment variables are accepted but resolved here and aren't kept in link.
-	 */
-	public ShellLink setTarget(String target) {
-		target = resolveEnvVariables(target);
+        if (!header.getLinkFlags().hasRelativePath()) {
+            Path target = Paths.get(resolveTarget());
+            Path origin = linkFileSource.getParent();
+            if (target.getRoot().equals(origin.getRoot()))
+                setRelativePath(origin.relativize(target).toString());
+        }
 
-		Path tar = Paths.get(target).toAbsolutePath();
-		target = tar.toString();
+        if (!header.getLinkFlags().hasWorkingDir()) {
+            Path target = Paths.get(resolveTarget());
+            if (!Files.isDirectory(target))
+                setWorkingDir(target.getParent().toString());
+        }
 
-		if (target.startsWith("\\\\")) {
-			int p1 = target.indexOf('\\', 2);
-			int p2 = target.indexOf('\\', p1+1);
+        serialize(Files.newOutputStream(linkFileSource));
+        return this;
+    }
 
-			LinkInfo inf = createLinkInfo();
-			inf.createCommonNetworkRelativeLink().setNetName(target.substring(0, p2));
-			inf.setCommonPathSuffix(target.substring(p2+1));
+    public String resolveTarget() {
+        if (header.getLinkFlags().hasLinkTargetIDList() && idlist != null && idlist.isCorrect()) {
+            String path = "";
+            for (ItemID i : idlist) {
+                if (i.getType() == ItemID.TYPE_DRIVE || i.getType() == ItemID.TYPE_DRIVE_OLD)
+                    path = i.getName();
+                else if (i.getType() == ItemID.TYPE_DIRECTORY || i.getType() == ItemID.TYPE_DIRECTORY_OLD)
+                    path += i.getName() + File.separator;
+                else if (i.getType() == ItemID.TYPE_FILE || i.getType() == ItemID.TYPE_FILE_OLD)
+                    path += i.getName();
+            }
+            return path;
+        }
 
-			if (Files.isDirectory(Paths.get(target)))
-				header.getFileAttributesFlags().setDirecory();
+        if (header.getLinkFlags().hasLinkInfo() && info != null) {
+            CNRLink l = info.getCommonNetworkRelativeLink();
+            String cps = info.getCommonPathSuffix();
+            String lbp = info.getLocalBasePath();
 
-			header.getLinkFlags().setHasExpString();
-			extra.put(EnvironmentVariable.signature, new EnvironmentVariable().setVariable(target));
+            if (lbp != null) {
+                String path = lbp;
+                if (cps != null && !cps.equals("")) {
+                    if (path.charAt(path.length() - 1) != File.separatorChar)
+                        path += File.separatorChar;
+                    path += cps;
+                }
+                return path;
+            }
 
-		} else try {
-			header.getLinkFlags().setHasLinkTargetIDList();
-			idlist = new LinkTargetIDList();
-			String[] path = target.split("\\\\");
-			idlist.add(new ItemID().setType(ItemID.TYPE_CLSID));
-			idlist.add(new ItemID().setType(ItemID.TYPE_DRIVE).setName(path[0]));
-			for (int i=1; i<path.length; i++)
-				idlist.add(new ItemID().setType(ItemID.TYPE_DIRECTORY).setName(path[i]));
+            if (l != null && cps != null)
+                return l.getNetName() + File.separator + cps;
+        }
 
-			LinkInfo inf = createLinkInfo();
-			inf.createVolumeID().setDriveType(VolumeID.DRIVE_FIXED);
-			inf.setLocalBasePath(target);
+        if (linkFileSource != null && header.getLinkFlags().hasRelativePath() && relativePath != null)
+            return linkFileSource.resolveSibling(relativePath).normalize().toString();
 
-			if (Files.isDirectory(tar))
-				header.getFileAttributesFlags().setDirecory();
-			else
-				idlist.getLast().setType(ItemID.TYPE_FILE);
+        return "<unknown>";
+    }
 
-		} catch (ShellLinkException e) {}
+    /**
+     * Set path of target file of directory. Function accepts local paths and network paths.
+     * Environment variables are accepted but resolved here and aren't kept in link.
+     */
+    public ShellLink setTarget(String target) {
+        return setTarget(Paths.get(target));
+    }
 
-		return this;
-	}
+    public ShellLink setTarget(Path target) {
+        String sTarget = resolveEnvVariables(target.toString());
 
-	public static ShellLink createLink(String target) {
-		ShellLink sl = new ShellLink();
-		sl.setTarget( target );
-		return sl;
-	}
+        Path absPathTarget = target.toAbsolutePath();
+        String sAbsPathTarget = absPathTarget.toString();
 
-	/**
-	 * equivalent to createLink(target).saveTo(linkpath)
-	 */
-	public static ShellLink createLink(String target, String linkpath) throws IOException {
-		return createLink(target).saveTo(linkpath);
-	}
+        if (sAbsPathTarget.startsWith("\\\\")) {
+            int p1 = sAbsPathTarget.indexOf('\\', 2);
+            int p2 = sAbsPathTarget.indexOf('\\', p1 + 1);
 
-	private static String resolveEnvVariables(String path) {
-		for (String i : env.keySet()) {
-			String p = i.replace("(", "\\(").replace(")", "\\)");
-			String r = env.get(i).replace("\\", "\\\\");
-			path = Pattern.compile("%"+p+"%", Pattern.CASE_INSENSITIVE).matcher(path).replaceAll(r);
-		}
-		return path;
-	}
+            LinkInfo inf = createLinkInfo();
+            inf.createCommonNetworkRelativeLink().setNetName(sAbsPathTarget.substring(0, p2));
+            inf.setCommonPathSuffix(sAbsPathTarget.substring(p2 + 1));
+
+            if (Files.isDirectory(absPathTarget))
+                header.getFileAttributesFlags().setDirecory();
+
+            header.getLinkFlags().setHasExpString();
+            extra.put(EnvironmentVariable.signature, new EnvironmentVariable().setVariable(sAbsPathTarget));
+
+        } else try {
+            header.getLinkFlags().setHasLinkTargetIDList();
+            idlist = new LinkTargetIDList();
+            String[] path = sAbsPathTarget.split("\\\\");
+            idlist.add(new ItemID().setType(ItemID.TYPE_CLSID));
+            idlist.add(new ItemID().setType(ItemID.TYPE_DRIVE).setName(path[0]));
+            for (int i = 1; i < path.length; i++)
+                idlist.add(new ItemID().setType(ItemID.TYPE_DIRECTORY).setName(path[i]));
+
+            LinkInfo inf = createLinkInfo();
+            inf.createVolumeID().setDriveType(VolumeID.DRIVE_FIXED);
+            inf.setLocalBasePath(sAbsPathTarget);
+
+            if (Files.isDirectory(absPathTarget))
+                header.getFileAttributesFlags().setDirecory();
+            else
+                idlist.getLast().setType(ItemID.TYPE_FILE);
+
+        } catch (ShellLinkException e) {
+            e.printStackTrace();
+        }
+
+        return this;
+    }
 }
