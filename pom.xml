@@ -3,7 +3,7 @@
 
     <groupId>com.github.nigeleke</groupId>
     <artifactId>mslinks</artifactId>
-    <version>1.0.4.SNAPSHOT</version>
+    <version>1.0.4</version>
     <name>FOKProjects MSLinks</name>
     <description>Java library for parsing and creating Windows shortcut files</description>
     <inceptionYear>2016</inceptionYear>
