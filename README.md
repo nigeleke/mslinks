@@ -2,7 +2,10 @@ mslinks
 =======
 Library for parsing and creating Windows shortcut files (.lnk)
 ***
-This is a exact fork of [BlackOverlord666/mslinks](https://github.com/BlackOverlord666/mslinks), however, I published it on maven central:
+This is a fork of [vatbub/mslinks](https://github.com/vatbub/mslinks), followed by a merge [diffplug/mslinks (no longer active)](https://githib.com/diffplug/mlslinks), both
+of which were forked from [BlackOverlord666/mslinks](https://github.com/BlackOverlord666/mslinks).
+
+AFAIK the most recent maven repository publication is Frederik's at:
 ```xml
 <dependency>
 	<groupId>com.github.vatbub</groupId>
@@ -11,7 +14,14 @@ This is a exact fork of [BlackOverlord666/mslinks](https://github.com/BlackOverl
 </dependency>
 ```
 
-**PLEASE NOTE** that this fork is not under active developement anymore. Please post any feature requests and bugs at [BlackOverlord666/mslinks](https://github.com/BlackOverlord666/mslinks).
+**PLEASE NOTE** as with Frederick, this fork is not under active developement. The repository at [BlackOverlord666/mslinks](https://github.com/BlackOverlord666/mslinks) is still seen as the master.
+
+My amendments were to provide:
+
+1. <code>Path</code> alternatives to the <code>String</code> interfaces.
+
+1. Add simple tests (based on the original <code>main()</code> example)
+
 ***
 
 Partial implementation of [Shell Link (.LNK) Binary File Format](http://msdn.microsoft.com/en-us/library/dd871305.aspx)
